@@ -1,0 +1,13 @@
+{
+  "name": "vanta-cs2",
+  "version": "0.1.0",
+  "builtin-baseline": "11121428426dfd091ed52a01288b98d79da71671",
+  "dependencies": [
+    { "name": "nlohmann-json", "version>=": "3.11.3" },
+    { "name": "spdlog",        "version>=": "1.14.1" },
+    { "name": "imgui",         "version>=": "1.91.8", "features": ["dx11-binding", "win32-binding"] },
+    { "name": "curl",          "version>=": "8.8.0",  "features": ["ssl"] },
+    { "name": "openssl",       "version>=": "3.3.1" },
+    { "name": "catch2",        "version>=": "3.6.0" }
+  ]
+}

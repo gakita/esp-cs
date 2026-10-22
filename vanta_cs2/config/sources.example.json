@@ -1,0 +1,11 @@
+[
+  {
+    "name":        "example-source",
+    "type":        "generic-json",
+    "url":         "https://example.invalid/cs2-offsets.json",
+    "notes":       "Replace with a real HTTPS endpoint you trust. Shape documented in src/offsets/sources/GenericJsonSource.hpp.",
+    "timeout_ms":  5000,
+    "max_retries": 3,
+    "enabled":     false
+  }
+]

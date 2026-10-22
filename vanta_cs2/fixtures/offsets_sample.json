@@ -1,0 +1,19 @@
+{
+  "schema":  1,
+  "build":   "fixture-build-0001",
+  "version": "fixture-r1",
+  "fields": [
+    { "name": "dwLocalPlayerPawn",       "value": "0x1811E80", "base": "module:client.dll",
+      "evidence": "fixture only — not a real offset" },
+    { "name": "dwEntityList",            "value": "0x1920000", "base": "module:client.dll",
+      "evidence": "fixture only — not a real offset" },
+    { "name": "dwViewMatrix",            "value": "0x1934520", "base": "module:client.dll",
+      "evidence": "fixture only — not a real offset" },
+    { "name": "C_BaseEntity::m_iTeamNum","value": "0x3BF",     "base": "class:C_BaseEntity" },
+    { "name": "C_BaseEntity::m_iHealth", "value": "0x334",     "base": "class:C_BaseEntity" },
+    { "name": "bone.head",   "value": 6, "base": "bone-index" },
+    { "name": "bone.neck",   "value": 5, "base": "bone-index" },
+    { "name": "bone.chest",  "value": 4, "base": "bone-index" },
+    { "name": "bone.pelvis", "value": 0, "base": "bone-index" }
+  ]
+}

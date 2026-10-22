@@ -1,0 +1,19 @@
+[
+  {
+    "name": "pick-closest-to-crosshair",
+    "local": { "team": "CT", "pos": [0,0,0] },
+    "players": [
+      { "idx": 1, "team": "T", "pos": [500, 0, 0] },
+      { "idx": 2, "team": "T", "pos": [500, 60, 0] }
+    ],
+    "fov_deg": 20,
+    "expect_target_idx": 1
+  },
+  {
+    "name": "ignore-ally",
+    "local": { "team": "CT", "pos": [0,0,0] },
+    "players": [{ "idx": 1, "team": "CT", "pos": [500, 0, 0] }],
+    "fov_deg": 20,
+    "expect_target_idx": null
+  }
+]

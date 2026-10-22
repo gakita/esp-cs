@@ -1,0 +1,10 @@
+^C:\USERS\RAULG\DOCUMENTS\_TESTES\CS_CHEAT\BUILD\CMAKEFILES\0CCBE5E897EB93A6D88E048CED9747DF\GENERATE.STAMP.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -SC:/Users/raulg/Documents/_Testes/cs_cheat -BC:/Users/raulg/Documents/_Testes/cs_cheat/build --check-stamp-list CMakeFiles/generate.stamp.list --vs-solution-file C:/Users/raulg/Documents/_Testes/cs_cheat/build/cs_cheat.slnx
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
