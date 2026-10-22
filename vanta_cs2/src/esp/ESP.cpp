@@ -24,20 +24,18 @@ static const Color& pick_color(const ESPConfig& cfg, const game::Entity& e, cons
     return is_ally(e, *local) ? cfg.ally_color : cfg.enemy_color;
 }
 
-// Builds a tight 2D bbox from the per-bone screen projections of the entity.
-// Falls back to a vertical capsule around origin if no bones projected.
 struct Box { float x0, y0, x1, y1; bool valid; };
 
 static Box compute_box(const game::Entity& e,
                        const math::Mat4& vp, float sw, float sh) {
     Box b{0, 0, 0, 0, false};
     bool first = true;
-    // Bones in CS2 come in model-local coords and corrupt the box; skip them.
+
     for (auto& bone : e.bones) {
-        if (true) continue; // disabled
         if (!bone.valid) continue;
         math::Vec2 s;
         if (!math::world_to_screen(vp, bone.pos, sw, sh, s)) continue;
+        if (s.x < -sw || s.x > sw * 2.0f || s.y < -sh || s.y > sh * 2.0f) continue;
         if (first) { b.x0 = b.x1 = s.x; b.y0 = b.y1 = s.y; first = false; }
         else {
             b.x0 = std::min(b.x0, s.x);
@@ -46,9 +44,15 @@ static Box compute_box(const game::Entity& e,
             b.y1 = std::max(b.y1, s.y);
         }
     }
-    if (!first) { b.valid = true; return b; }
+    if (!first) {
+        const float pad_x = std::max(2.0f, (b.x1 - b.x0) * 0.08f);
+        const float pad_y = std::max(2.0f, (b.y1 - b.y0) * 0.04f);
+        b.x0 -= pad_x; b.x1 += pad_x;
+        b.y0 -= pad_y; b.y1 += pad_y;
+        b.valid = true;
+        return b;
+    }
 
-    // Fallback: project head + feet.
     math::Vec3 head = e.origin; head.z += 72.0f;
     math::Vec3 feet = e.origin;
     math::Vec2 s_head, s_feet;
@@ -69,41 +73,38 @@ static void draw_corner_box(ImDrawList* dl, const Box& b, ImU32 c, float t) {
     const float cw = std::max(4.0f, w * 0.25f);
     const float ch = std::max(4.0f, h * 0.15f);
 
-    // top-left
     dl->AddLine({b.x0, b.y0}, {b.x0 + cw, b.y0}, c, t);
     dl->AddLine({b.x0, b.y0}, {b.x0, b.y0 + ch}, c, t);
-    // top-right
     dl->AddLine({b.x1, b.y0}, {b.x1 - cw, b.y0}, c, t);
     dl->AddLine({b.x1, b.y0}, {b.x1, b.y0 + ch}, c, t);
-    // bottom-left
     dl->AddLine({b.x0, b.y1}, {b.x0 + cw, b.y1}, c, t);
     dl->AddLine({b.x0, b.y1}, {b.x0, b.y1 - ch}, c, t);
-    // bottom-right
     dl->AddLine({b.x1, b.y1}, {b.x1 - cw, b.y1}, c, t);
     dl->AddLine({b.x1, b.y1}, {b.x1, b.y1 - ch}, c, t);
 }
 
-// Skeleton connection table — pairs of bone indices.
 static constexpr std::array<std::pair<int,int>, 3> kSkeletonPairs = {{
-    {(int)game::Bone::Head, (int)game::Bone::Neck},
-    {(int)game::Bone::Neck, (int)game::Bone::Chest},
+    {(int)game::Bone::Head,  (int)game::Bone::Neck},
+    {(int)game::Bone::Neck,  (int)game::Bone::Chest},
     {(int)game::Bone::Chest, (int)game::Bone::Pelvis},
 }};
 
-static void draw_skeleton(ImDrawList* /*dl*/, const game::Entity& /*e*/,
+static void draw_skeleton(ImDrawList* dl, const game::Entity& e,
                           const math::Mat4& vp, float sw, float sh,
                           ImU32 c, float t) {
-    if (true) return; for (auto& [a, b] : kSkeletonPairs) {
+    for (auto& [a, b] : kSkeletonPairs) {
         if (!e.bones[a].valid || !e.bones[b].valid) continue;
         math::Vec2 pa, pb;
         if (!math::world_to_screen(vp, e.bones[a].pos, sw, sh, pa)) continue;
         if (!math::world_to_screen(vp, e.bones[b].pos, sw, sh, pb)) continue;
+        if (pa.x < -sw || pa.x > sw * 2.0f || pb.x < -sw || pb.x > sw * 2.0f) continue;
+        if (pa.y < -sh || pa.y > sh * 2.0f || pb.y < -sh || pb.y > sh * 2.0f) continue;
         dl->AddLine({pa.x, pa.y}, {pb.x, pb.y}, c, t);
     }
 }
 
 static void draw_health_bar(ImDrawList* dl, const Box& b, int hp, int armor, ImU32 team_col) {
-    hp = std::clamp(hp, 0, 100);
+    hp    = std::clamp(hp,    0, 100);
     armor = std::clamp(armor, 0, 100);
     const float bar_x = b.x0 - 5.0f;
     const float bar_h = b.y1 - b.y0;
@@ -129,7 +130,7 @@ void ESP::render(const game::Snapshot& snap, const ESPConfig& cfg, ImDrawList* d
     const auto center = ImVec2(snap.client_w * 0.5f, snap.client_h * 0.5f);
 
     for (const auto& e : snap.players) {
-        if (e.is_local) continue; // never draw box on self
+        if (e.is_local) continue;
         if (local && e.pawn_address == local->pawn_address) continue;
         if (cfg.skip_dead && !e.alive) continue;
 
@@ -150,6 +151,7 @@ void ESP::render(const game::Snapshot& snap, const ESPConfig& cfg, ImDrawList* d
             const float bh = bb.y1 - bb.y0;
             if (bw > snap.client_w * 0.8f || bh > snap.client_h * 0.8f) continue;
             if (bw < 2.0f || bh < 2.0f) continue;
+
             if (cfg.box_cornered) {
                 draw_corner_box(dl, bb, c, cfg.line_thickness);
             } else if (cfg.box_2d) {
@@ -168,11 +170,11 @@ void ESP::render(const game::Snapshot& snap, const ESPConfig& cfg, ImDrawList* d
                 text_y += cfg.text_size + 1.0f;
             };
             const ImU32 tc = col32(cfg.text_color, cfg.opacity);
-            if (cfg.name && !e.name.empty())         push_text(e.name, tc);
+            if (cfg.name && !e.name.empty())            push_text(e.name, tc);
             if (cfg.weapon && !e.active_weapon.empty()) push_text(e.active_weapon, tc);
             if (cfg.distance && local) {
                 char buf[32];
-                std::snprintf(buf, sizeof(buf), "%.0fm", dist / 39.37f); // units->meters approx
+                std::snprintf(buf, sizeof(buf), "%.0fm", dist / 39.37f);
                 push_text(buf, tc);
             }
             if (cfg.team_id) push_text(game::team_label(e.team), tc);
@@ -183,13 +185,13 @@ void ESP::render(const game::Snapshot& snap, const ESPConfig& cfg, ImDrawList* d
             }
 
             if (cfg.snapline) {
-                dl->AddLine({center.x, snap.client_h},
-                            {(bb.x0 + bb.x1) * 0.5f, bb.y1},
+                const float sx = std::clamp((bb.x0 + bb.x1) * 0.5f, 0.0f, snap.client_w);
+                const float sy = std::clamp(bb.y1,                   0.0f, snap.client_h);
+                dl->AddLine({center.x, snap.client_h}, {sx, sy},
                             c, cfg.line_thickness);
                 m_stats.snaplines++;
             }
         } else if (cfg.offscreen_arrows) {
-            // Project head and clamp to screen edge.
             math::Vec3 head = e.origin; head.z += 72.0f;
             math::Vec2 s;
             if (math::world_to_screen(snap.view_projection, head,
@@ -206,7 +208,6 @@ void ESP::render(const game::Snapshot& snap, const ESPConfig& cfg, ImDrawList* d
         }
     }
 
-    // Bomb HUD.
     if (cfg.bomb_info && snap.bomb && snap.bomb->planted) {
         char buf[64];
         std::snprintf(buf, sizeof(buf), "BOMB %.1fs", snap.bomb->time_until_detonate);

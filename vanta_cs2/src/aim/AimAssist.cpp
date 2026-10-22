@@ -15,10 +15,16 @@ bool want_target(const AimConfig& cfg, const game::Entity& e, const game::Entity
     return true;
 }
 
-math::Vec3 bone_pos(const game::Entity& e, game::Bone which) {
+// Returns the aim point for the requested bone.
+//   1. Real bone from the EntityReader (world-space, validated).
+//   2. Explicit origin+height fallback — tagged via out_is_fallback.
+math::Vec3 bone_pos(const game::Entity& e, game::Bone which, bool* out_is_fallback = nullptr) {
     const auto idx = (std::size_t)which;
-    (void)idx; // bones in CS2 come in model-local coords; skip them, use fallback.
-    // Fallback approximations in Source-2 units.
+    if (idx < e.bones.size() && e.bones[idx].valid) {
+        if (out_is_fallback) *out_is_fallback = false;
+        return e.bones[idx].pos;
+    }
+    if (out_is_fallback) *out_is_fallback = true;
     math::Vec3 p = e.origin;
     switch (which) {
         case game::Bone::Head:   p.z += 72.0f; break;
@@ -52,11 +58,10 @@ AimOutput AimAssist::tick(const game::Snapshot& snap,
     m_stats.ticks++;
 
     if (!cfg.enabled || !snap.game_focused || !snap.local) {
-        reset(); // never leak state between game sessions / unfocused windows
+        reset();
         return out;
     }
 
-    // Activation.
     bool active = false;
     if (cfg.mode == ActivationMode::Hold) {
         active = hotkey_down;
@@ -69,8 +74,6 @@ AimOutput AimAssist::tick(const game::Snapshot& snap,
     if (cfg.require_firing && !firing) active = false;
 
     if (!active) {
-        // Clear residues and lock so a released hotkey never produces a stray
-        // frame of motion.
         m_resid_pitch = 0.0f;
         m_resid_yaw   = 0.0f;
         if (!cfg.hold_last_target) m_locked_target.reset();
@@ -78,13 +81,15 @@ AimOutput AimAssist::tick(const game::Snapshot& snap,
     }
     out.active = true;
 
-    // Selection: find the best candidate.
     const game::Entity* local = &*snap.local;
     const game::Entity* best  = nullptr;
     float best_score = std::numeric_limits<float>::infinity();
+
     for (const auto& e : snap.players) {
         if (!want_target(cfg, e, local)) continue;
-        math::Vec3 target_pt = bone_pos(e, cfg.target_bone);
+        bool fb = false;
+        math::Vec3 target_pt = bone_pos(e, cfg.target_bone, &fb);
+
         float dist = math::Vec3::distance(local->origin, target_pt);
         if (cfg.max_distance > 0.0f && dist > cfg.max_distance) continue;
 
@@ -94,15 +99,14 @@ AimOutput AimAssist::tick(const game::Snapshot& snap,
 
         float score;
         switch (cfg.priority) {
-            case SelectionPriority::ClosestInWorld:     score = dist;        break;
+            case SelectionPriority::ClosestInWorld:     score = dist;             break;
             case SelectionPriority::LowestHealth:       score = (float)e.health;  break;
             case SelectionPriority::ClosestToCrosshair:
-            default:                                     score = ang_dist;    break;
+            default:                                    score = ang_dist;         break;
         }
         if (score < best_score) { best_score = score; best = &e; }
     }
 
-    // Target switch delay / hold.
     if (m_locked_target) {
         bool still_valid = false;
         for (const auto& e : snap.players) {
@@ -119,7 +123,7 @@ AimOutput AimAssist::tick(const game::Snapshot& snap,
         if (!still_valid) {
             auto since = std::chrono::duration<float, std::milli>(now - m_last_switch).count();
             if (since < cfg.target_switch_delay_ms) {
-                return out; // debounce
+                return out;
             }
             m_locked_target.reset();
             m_stats.targets_lost++;
@@ -134,34 +138,28 @@ AimOutput AimAssist::tick(const game::Snapshot& snap,
         m_stats.targets_selected++;
     }
 
-    // Compute desired angle delta.
     math::Vec3 target_pt = bone_pos(*best, cfg.target_bone);
     math::Angles desired = math::calc_angle(local->eye_pos, target_pt);
     math::Angles d       = math::delta(view, desired);
 
-    // Frame-independent smoothing: effective fraction grows with dt but
-    // asymptotes at 1 so very long frames don't overshoot.
     const float tau = 1.0f / std::max(0.001f, cfg.smooth_rate_hz);
     const float alpha = 1.0f - std::exp(-dt_seconds / tau);
 
     const float step_pitch = d.pitch * alpha + m_resid_pitch;
     const float step_yaw   = d.yaw   * alpha + m_resid_yaw;
 
-    // Convert to raw mouse counts; keep the rounding residue for next frame
-    // so repeated sub-count moves don't vanish.
     auto raw = math::degrees_to_mouse(step_pitch, step_yaw, sensitivity);
-    const float applied_pitch = (float)raw.dy * sensitivity * 0.022f;
+    const float applied_pitch =  (float)raw.dy * sensitivity * 0.022f;
     const float applied_yaw   = -(float)raw.dx * sensitivity * 0.022f;
     m_resid_pitch = step_pitch - applied_pitch;
     m_resid_yaw   = step_yaw   - applied_yaw;
 
-    // Clamp per-frame motion to a sane cap to kill oscillations if dt spikes.
     constexpr long kMaxCountsPerFrame = 400;
     raw.dx = std::clamp(raw.dx, -kMaxCountsPerFrame, kMaxCountsPerFrame);
     raw.dy = std::clamp(raw.dy, -kMaxCountsPerFrame, kMaxCountsPerFrame);
 
-    out.mouse = raw;
-    out.target_index      = best->index;
+    out.mouse              = raw;
+    out.target_index       = best->index;
     out.distance_to_target = math::Vec3::distance(local->origin, target_pt);
     if (raw.dx != 0 || raw.dy != 0) m_stats.mouse_events_sent++;
     return out;

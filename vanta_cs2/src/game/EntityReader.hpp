@@ -2,13 +2,14 @@
 #pragma once
 
 #include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <memory>
 #include <thread>
 
 #include "process/ProcessReader.hpp"
 #include "offsets/OffsetManager.hpp"
-#include "game/GameState.hpp"   // Snapshot, Entity, BombState, Team, Bone, BoneTransform
+#include "game/GameState.hpp"
 #include "math/Mat4.hpp"
 
 namespace vanta::game {
@@ -28,27 +29,22 @@ public:
     void stop();
 
     // Diagnostics
-    std::uint64_t last_tick_us()  const { return m_last_tick_us.load(); }
+    std::uint64_t last_tick_us()   const { return m_last_tick_us.load(); }
     std::uint64_t total_entities() const { return m_total_entities.load(); }
-    std::uint64_t tick_count()    const { return m_tick_count.load(); }
+    std::uint64_t tick_count()     const { return m_tick_count.load(); }
+
+    // Convenience: last tick duration as a chrono value — this is what
+    // App.cpp wants when it formats read_ms.
+    std::chrono::microseconds last_tick_duration() const {
+        return std::chrono::microseconds(m_last_tick_us.load());
+    }
 
 private:
     void loop(int target_hz);
     void do_one_tick(std::shared_ptr<Snapshot>& snap);
-
-    // Reads the 4x4 view-projection matrix from client.dll + dwViewMatrix.
     bool read_view_projection(std::uintptr_t base, math::Mat4& out);
-
-    // Validates & hydrates a KNOWN pawn pointer. Returns false if it fails
-    // sanity (health, team, lifeState, scene node, dormant, coord range).
     bool read_entity_pawn(Entity& out);
-
-    // Reads bones for `in` and writes positions into `out.bones`. Applies
-    // CGameSceneNode::m_nodeToWorld (3x4 row-major) when bones look to be
-    // in model space.
     bool read_bones(const Entity& in, Entity& out);
-
-    // CS2 CGameEntitySystem handle resolver.
     std::uintptr_t resolve_handle(std::uintptr_t system, std::uint32_t handle) const;
 
     process::ProcessReader& m_proc;

@@ -1,0 +1,4 @@
+[2026-10-22 01:48:08.538] [warning] bundle parse: [json.exception.type_error.302] type must be number, but is string
+[2026-10-22 01:48:13.876] [warning] Attached to pid 38088 but module enum failed
+[2026-10-22 01:48:13.876] [info] Attached to cs2.exe (pid 38088)
+[2026-10-22 01:48:13.876] [warning] some required CS2 modules missing
